@@ -6,14 +6,61 @@ import re
 import csv
 import base64
 import os
+import requests
 from datetime import datetime
 from urllib.parse import urlencode
 from fake_useragent import UserAgent
+from pathlib import Path
 
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_PATH = os.path.join(BASE_DIR, '..', 'data', 'bin_database.csv')
+DATABASE_PATH = os.path.join(BASE_DIR, 'data', 'bin_database.csv')
+
+def ensure_database():
+    """Download the BIN database if it doesn't exist"""
+    db_path = Path(DATABASE_PATH)
+    db_dir = db_path.parent
+    
+    # Create data directory if it doesn't exist
+    db_dir.mkdir(exist_ok=True)
+    
+    # Download if file doesn't exist
+    if not db_path.exists():
+        print("📥 Downloading BIN database (25MB)...")
+        # Your Google Drive direct download link
+        download_url = "https://drive.google.com/uc?export=download&id=1njUaQKCpyjA9mCZAmGDh39SChK3O-1EH"
+        
+        try:
+            # Download with progress indication
+            response = requests.get(download_url, stream=True)
+            response.raise_for_status()
+            
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded = 0
+            
+            with open(db_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total_size > 0:
+                        progress = (downloaded / total_size) * 100
+                        print(f"📊 Progress: {progress:.1f}%", end='\r')
+            
+            print("\n✅ Database downloaded successfully!")
+            # Quick count of records
+            with open(db_path, 'r', encoding='utf-8') as f:
+                line_count = sum(1 for line in f) - 1
+            print(f"📊 Total records: {line_count:,}")
+            
+        except Exception as e:
+            print(f"❌ Failed to download database: {e}")
+            # Create empty file as fallback
+            db_path.touch()
+            print("⚠️ Created empty database file as fallback")
+
+# Call this before the app runs
+ensure_database()
 
 def _d(s):
     return base64.b64decode(s).decode('utf-8')
@@ -676,4 +723,5 @@ def check_card():
     return jsonify(result)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
